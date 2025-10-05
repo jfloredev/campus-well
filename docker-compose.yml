@@ -8,11 +8,11 @@ services:
       MYSQL_PASSWORD: campus
     command: --bind-address=0.0.0.0 --port=3306
     healthcheck:
-      test: ["CMD", "mysql", "-ucampus", "-pcampus", "-e", "USE campuswell; SELECT 1;"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
       interval: 10s
-      timeout: 10s
-      retries: 50
-      start_period: 120s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - mysql_data:/var/lib/mysql
       - ./sports-svc/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
