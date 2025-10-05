@@ -1,30 +1,33 @@
-version: "3.9"
 services:
   mysql:
     image: mysql:8.4
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-campuswell}
-      MYSQL_USER: ${MYSQL_USER:-campus}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-campus}
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: campuswell
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus
     command: --bind-address=0.0.0.0 --port=3306
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
+      test: ["CMD", "mysql", "-ucampus", "-pcampus", "-e", "USE campuswell; SELECT 1;"]
       interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+      timeout: 10s
+      retries: 50
+      start_period: 120s
     volumes:
       - mysql_data:/var/lib/mysql
       - ./sports-svc/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - campus-network
     restart: unless-stopped
 
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-campuswell}
-      POSTGRES_USER: ${POSTGRES_USER:-campus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-campus}
+      POSTGRES_DB: campuswell
+      POSTGRES_USER: campus
+      POSTGRES_PASSWORD: campus
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U campus -d campuswell"]
       interval: 10s
@@ -32,66 +35,78 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - campus-network
     restart: unless-stopped
 
   mongo:
     image: mongo:7
+    environment:
+      MONGO_INITDB_DATABASE: campuswell
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - campus-network
     restart: unless-stopped
 
   sports-svc:
     build: ./sports-svc
-    environment:
-      - MYSQL_HOST=mysql
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-campuswell}
-      - MYSQL_USER=${MYSQL_USER:-campus}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-campus}
     depends_on:
       mysql:
         condition: service_healthy
     ports: ["8082:8082"]
+    networks:
+      - campus-network
     restart: unless-stopped
 
   psych-svc:
     build: ./psych-svc
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-campuswell}
-      - POSTGRES_USER=${POSTGRES_USER:-campus}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-campus}
       - SEED_PSYCH=true
     depends_on:
       postgres:
         condition: service_healthy
     ports: ["8081:8081"]
+    networks:
+      - campus-network
     restart: unless-stopped
 
   habits-svc:
     build: ./habits-svc
-    environment:
-      - MONGODB_URI=mongodb://mongo:27017/${MYSQL_DATABASE:-campuswell}
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
     ports: ["8083:8083"]
+    networks:
+      - campus-network
     restart: unless-stopped
 
   aggregator-svc:
     build: ./aggregator-svc
-    environment:
-      - PSYCH_BASE=${PSYCH_BASE:-http://psych-svc:8081}
-      - SPORTS_BASE=${SPORTS_BASE:-http://sports-svc:8082}
-      - HABITS_BASE=${HABITS_BASE:-http://habits-svc:8083}
-      - JWT_SECRET=${JWT_SECRET:-devsecret}
+    depends_on:
+      - psych-svc
+      - sports-svc
+      - habits-svc
     ports: ["8080:8080"]
+    networks:
+      - campus-network
     restart: unless-stopped
 
   analytics-svc:
     build: ./analytics-svc
-    environment:
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - ATHENA_DB=${ATHENA_DB:-campuswell_analytics}
-      - ATHENA_OUTPUT=${ATHENA_OUTPUT:-s3://your-bucket/athena-results/}
     ports: ["8084:8084"]
+    networks:
+      - campus-network
     restart: unless-stopped
 
   frontend:
@@ -106,7 +121,13 @@ services:
       - REACT_APP_SPORTS_URL=http://sports-svc:8082
       - REACT_APP_HABITS_URL=http://habits-svc:8083
       - REACT_APP_ANALYTICS_URL=http://analytics-svc:8084
+    networks:
+      - campus-network
     restart: unless-stopped
+
+networks:
+  campus-network:
+    driver: bridge
 
 volumes:
   mysql_data:

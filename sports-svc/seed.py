@@ -14,7 +14,7 @@ LOCATIONS = [
     'Swimming Pool', 'Library Room 101', 'Main Auditorium', 'Conference Room A'
 ]
 
-def seed_events(num_rows: int = 20000):
+def seed_events(num_rows: int = 10):
     engine = create_engine(DB_URL, pool_pre_ping=True)
     inserted = 0
     batch = []
